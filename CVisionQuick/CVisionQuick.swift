@@ -7,3 +7,10 @@
 
 import Foundation
 
+public class API {
+    public init() {}
+    public func doSomething() -> String {
+        return "I am new framework"
+    }
+}
+

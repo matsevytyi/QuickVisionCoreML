@@ -10,13 +10,57 @@ import Accelerate
 import CoreImage
 
 public class QuickPoseDetectionModel {
+    
     private let model: MLModel
     
-    public init(model: MLModel) {
+    private let inputName: String
+    private let inputWidth: Int
+    private let inputHeight: Int
+    
+    private let outputName: String
+    
+    
+    public init(model: MLModel) throws {
+        
         self.model = model
         
-        // extract input name and dimensions
-        // exctract output name and dimensions
+        let desc = self.model.modelDescription
+        
+        // Determine input feature name and size
+        if let (name, feature) = desc.inputDescriptionsByName.first,
+               feature.type == .image,
+               let constraint = feature.imageConstraint {
+                self.inputName = name
+                self.inputWidth = constraint.pixelsWide
+                self.inputHeight = constraint.pixelsHigh
+            } else {
+                // Fallbacks (default appoach - більшість користується 640/640)
+                self.inputName = desc.inputDescriptionsByName.keys.first ?? "image"
+                self.inputWidth = 640
+                self.inputHeight = 640
+            }
+        
+        // Output feature type
+        if let (name, _) = desc.outputDescriptionsByName.first {
+                self.outputName = name
+            } else {
+                throw NSError(
+                    domain: "QuickPoseDetectionModel",
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "Failed to extract output feature metadata, make sure the model is .mlmodel. If problem persists, specify settings manually."]
+                )
+
+            }
+        
+        // TODO: POSSIBLE ADDITIONS
+        // detect image/video encoding
+        
+        // Number of keypoints (currently 17).
+        // Number of channels (currently 56) and semantics (4+1+51).
+        // Confidence thresholds (0.5).
+        // Whether output coordinates are normalized or absolute.
+        // Expected output shape (e.g. [1, 56, 8400])
+        
         // detect specific hardware accelerations
     }
     
@@ -52,10 +96,11 @@ public class QuickPoseDetectionModel {
     }
     
     private func predictHelper(pixelBuffer: CVPixelBuffer) throws -> [CGPoint] {
+        
         // Wrap CVPixelBuffer into MLFeatureProvider using the expected input name.
-        // "image" and "1035" myst be replaced from hardcoding to extracting out from model metadata
+        
         let inputValue = MLFeatureValue(pixelBuffer: pixelBuffer)
-        let input = try MLDictionaryFeatureProvider(dictionary: ["image": inputValue])
+        let input = try MLDictionaryFeatureProvider(dictionary: [self.inputName: inputValue])
         
         print("Raw input", input)
 
@@ -108,9 +153,7 @@ public class QuickPoseDetectionModel {
 
     
     private func preprocessImage(_ cgImage: CGImage) throws -> CVPixelBuffer {
-        let width = 640
-        let height = 640
-        
+
         let attrs = [
             kCVPixelBufferCGImageCompatibilityKey: true,
             kCVPixelBufferCGBitmapContextCompatibilityKey: true
@@ -119,8 +162,8 @@ public class QuickPoseDetectionModel {
         var pixelBuffer: CVPixelBuffer?
         let status = CVPixelBufferCreate(
             kCFAllocatorDefault,
-            width,
-            height,
+            self.inputWidth,
+            self.inputHeight,
             kCVPixelFormatType_32ARGB,
             attrs,
             &pixelBuffer
@@ -134,8 +177,8 @@ public class QuickPoseDetectionModel {
         
         guard let context = CGContext(
             data: CVPixelBufferGetBaseAddress(buffer),
-            width: width,
-            height: height,
+            width: self.inputWidth,
+            height: self.inputHeight,
             bitsPerComponent: 8,
             bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
             space: CGColorSpaceCreateDeviceRGB(),
@@ -144,13 +187,13 @@ public class QuickPoseDetectionModel {
             throw NSError(domain: "ImageProcessing", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to create CGContext"])
         }
         
-        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: self.inputWidth, height: self.inputHeight))
         
         return buffer
     }
     
     private func parseCocoOutput(_ prediction: MLFeatureProvider) -> [CGPoint] {
-        guard let multiArray = prediction.featureValue(for: "var_1035")?.multiArrayValue else {
+        guard let multiArray = prediction.featureValue(for: self.outputName)?.multiArrayValue else {
             print("No multiArray output")
             return []
         }

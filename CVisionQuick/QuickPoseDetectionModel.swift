@@ -38,6 +38,11 @@ public class QuickPoseDetectionModel {
                 self.inputName = desc.inputDescriptionsByName.keys.first ?? "image"
                 self.inputWidth = 640
                 self.inputHeight = 640
+                throw NSError(
+                    domain: "QuickPoseDetectionModel",
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "Failed to extract output feature metadata, make sure the model is .mlmodel. If problem persists, specify settings manually."]
+                )
             }
         
         // Output feature type
@@ -82,8 +87,8 @@ public class QuickPoseDetectionModel {
     public func predict(pixelBuffer: CVPixelBuffer) -> [CGPoint] {
         do {
             
-            print("Buffer received")
-            let resizedBuffer = try resizePixelBuffer(pixelBuffer, width: 640, height: 640)
+            print("Buffer received", pixelBuffer)
+            let resizedBuffer = try resizePixelBuffer(pixelBuffer)
             
             print("Buffer resized")
             
@@ -113,7 +118,7 @@ public class QuickPoseDetectionModel {
         return parseCocoOutput(prediction)
     }
     
-    private func resizePixelBuffer(_ buffer: CVPixelBuffer, width: Int, height: Int) throws -> CVPixelBuffer {
+    private func resizePixelBuffer(_ buffer: CVPixelBuffer) throws -> CVPixelBuffer {
         var outputBuffer: CVPixelBuffer?
         let attrs = [
             kCVPixelBufferCGImageCompatibilityKey: true,
@@ -122,8 +127,8 @@ public class QuickPoseDetectionModel {
 
         let status = CVPixelBufferCreate(
             kCFAllocatorDefault,
-            width,
-            height,
+            self.inputWidth,
+            self.inputHeight,
             CVPixelBufferGetPixelFormatType(buffer),
             attrs,
             &outputBuffer
@@ -143,8 +148,8 @@ public class QuickPoseDetectionModel {
         // Use Core Image for fast resizing
         let ciImage = CIImage(cvPixelBuffer: buffer)
         let ciContext = CIContext()
-        let scaleTransform = CGAffineTransform(scaleX: CGFloat(width) / CGFloat(CVPixelBufferGetWidth(buffer)),
-                                               y: CGFloat(height) / CGFloat(CVPixelBufferGetHeight(buffer)))
+        let scaleTransform = CGAffineTransform(scaleX: CGFloat(self.inputWidth) / CGFloat(CVPixelBufferGetWidth(buffer)),
+                                               y: CGFloat(self.inputHeight) / CGFloat(CVPixelBufferGetHeight(buffer)))
         let resizedCIImage = ciImage.transformed(by: scaleTransform)
         ciContext.render(resizedCIImage, to: resizedBuffer)
 
@@ -233,7 +238,7 @@ public class QuickPoseDetectionModel {
                 print("normal kp _\(kp) with \(x), \(y)")
             } else {
                 keypoints.append(CGPoint(x: 0, y: 0))
-                print("abnormal kp _ \(kp)")
+                print("abnormal kp _\(kp) with \(x), \(y) and conf=\(conf)")
             }
         }
         

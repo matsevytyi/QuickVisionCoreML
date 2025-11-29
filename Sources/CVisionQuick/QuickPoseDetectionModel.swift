@@ -269,7 +269,7 @@ public class QuickPoseDetectionModel {
         let shape = outputArray.shape.map { Int(truncating: $0) } // [K, H, W]
         
         let keypoints: [CGPoint] = (0..<numKeypoints).map { k in
-            var maxVal: Double = -Double.infinity
+            var maxVal: Float = -Float.infinity
             var maxY = 0, maxX = 0
             
             // Find argmax in heatmap slice [H,W] for keypoint k
@@ -277,7 +277,7 @@ public class QuickPoseDetectionModel {
                 for x in 0..<shape[2] {
                     let val = outputArray[[NSNumber(value: k),
                                      NSNumber(value: y),
-                                     NSNumber(value: x)]].doubleValue
+                                     NSNumber(value: x)]].floatValue
                     if val > maxVal {
                         maxVal = val
                         maxY = y

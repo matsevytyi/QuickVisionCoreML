@@ -83,27 +83,26 @@ public class QuickPoseDetectionModel {
         try self.init(model: model) // call default initializer first
         
         // Override input parameters if user specified any
-        if let w = config["inputWidth"] as? Int { self.inputWidth = w }
-        if let h = config["inputHeight"] as? Int { self.inputHeight = h }
-        if let name = config["inputName"] as? String { self.inputName = name }
+        if let userSuggestedInputWidth = config["inputWidth"] as? Int { self.inputWidth = userSuggestedInputWidth }
+        if let userSuggestedInputHeight = config["inputHeight"] as? Int { self.inputHeight = userSuggestedInputHeight }
+        if let userSuggestedInputName = config["inputName"] as? String { self.inputName = userSuggestedInputName }
         
         // Override output parameters
-        if let outName = config["outputName"] as? String { self.outputName = outName }
-        if let kps = config["numKeypoints"] as? Int { self.numKeypoints = kps }
-        if let hm = config["isHeatmapModel"] as? Bool { self.isHeatmapModel = hm }
-        if let hmW = config["heatmapWidth"] as? Int,
-           let hmH = config["heatmapHeight"] as? Int {
-            self.heatmapSize = (hmW, hmH)
+        if let userSuggestedOutputName = config["outputName"] as? String { self.outputName = userSuggestedOutputName }
+        if let userSuggestedNumberKeypoints = config["numKeypoints"] as? Int { self.numKeypoints = userSuggestedNumberKeypoints }
+        if let userSuggestedIsHeatmapModel = config["isHeatmapModel"] as? Bool { self.isHeatmapModel = userSuggestedIsHeatmapModel }
+        if let userSuiggestedHeatmapHeight = config["heatmapWidth"] as? Int,
+           let userSuiggestedHeatmapWidth = config["heatmapHeight"] as? Int {
+            self.heatmapSize = (userSuiggestedHeatmapHeight, userSuiggestedHeatmapWidth)
         }
-        if let stride = config["outputStride"] as? Float { self.outputStride = stride }
+        if let userSuggestedStrideCoef = config["outputStride"] as? Float { self.outputStride = userSuggestedStrideCoef }
         
         // Other overrides
-        if let threshold = config["detectionThreshold"] as? Float {
-            self.detectionThreshold = threshold
+        if let userSuggestedThrshold = config["detectionThreshold"] as? Float {
+            self.detectionThreshold = userSuggestedThrshold
         }
     }
 
-    
     public func predict(image: CGImage) -> [CGPoint] {
         
         do {
@@ -197,7 +196,6 @@ public class QuickPoseDetectionModel {
         return resizedBuffer
     }
 
-    
     private func preprocessImage(_ cgImage: CGImage) throws -> CVPixelBuffer {
 
         let attrs = [
@@ -246,18 +244,18 @@ public class QuickPoseDetectionModel {
         
         let ptr = UnsafeMutablePointer<Float32>(OpaquePointer(outputArray.dataPointer))
         
-        let channels = 56  // 4 bbox + 1 obj + 51 keypoints
+        // 56 channels = 4 bbox + 1 obj + 51 keypoints
         let anchors = 8400
         
         var bestObjectness: Float32 = 0
         var bestIndex: Int = -1
         
         // Find anchor with highest objectness (channel index 4)
-        for i in 0..<anchors {
-            let obj = ptr[4 * anchors + i]
+        for index in 0..<anchors {
+            let obj = ptr[4 * anchors + index]
             if obj > bestObjectness {
                 bestObjectness = obj
-                bestIndex = i
+                bestIndex = index
             }
         }
         
@@ -269,17 +267,17 @@ public class QuickPoseDetectionModel {
         // Extract 17 keypoints (from channel 5 to 55)
         var keypoints: [CGPoint] = []
         
-        for kp in 0..<17 {
-            let x = ptr[(5 + kp * 3) * anchors + bestIndex] / Float(self.inputWidth)
-            let y = ptr[(5 + kp * 3 + 1) * anchors + bestIndex] / Float(self.inputHeight)
-            let conf = ptr[(5 + kp * 3 + 2) * anchors + bestIndex]
+        for keypoint in 0..<17 {
+            let projectedFrameX = ptr[(5 + keypoint * 3) * anchors + bestIndex] / Float(self.inputWidth)
+            let projectedFrameY = ptr[(5 + keypoint * 3 + 1) * anchors + bestIndex] / Float(self.inputHeight)
+            let conf = ptr[(5 + keypoint * 3 + 2) * anchors + bestIndex]
             
             if conf > self.detectionThreshold {
-                keypoints.append(CGPoint(x: CGFloat(x), y: CGFloat(y)))
-                print("normal kp _\(kp) with \(x), \(y)")
+                keypoints.append(CGPoint(x: CGFloat(projectedFrameX), y: CGFloat(projectedFrameY)))
+                print("normal kp _\(keypoint) with \(projectedFrameX), \(projectedFrameY)")
             } else {
                 keypoints.append(CGPoint(x: 0, y: 0))
-                print("abnormal kp _\(kp) with \(x), \(y) and conf=\(conf)")
+                print("abnormal kp _\(keypoint) with \(projectedFrameX), \(projectedFrameY) and conf=\(conf)")
             }
         }
         
@@ -295,20 +293,20 @@ public class QuickPoseDetectionModel {
         
         let shape = outputArray.shape.map { Int(truncating: $0) } // [K, H, W]
         
-        let keypoints: [CGPoint] = (0..<numKeypoints).map { k in
+        let keypoints: [CGPoint] = (0..<numKeypoints).map { keypoint in
             var maxVal: Float = -Float.infinity
             var maxY = 0, maxX = 0
             
             // Find argmax in heatmap slice [H,W] for keypoint k
-            for y in 0..<shape[1] {
-                for x in 0..<shape[2] {
-                    let val = outputArray[[NSNumber(value: k),
-                                     NSNumber(value: y),
-                                     NSNumber(value: x)]].floatValue
+            for heatmapY in 0..<shape[1] {
+                for heatmapX in 0..<shape[2] {
+                    let val = outputArray[[NSNumber(value: keypoint),
+                                     NSNumber(value: heatmapY),
+                                     NSNumber(value: heatmapX)]].floatValue
                     if val > maxVal {
                         maxVal = val
-                        maxY = y
-                        maxX = x
+                        maxY = heatmapY
+                        maxX = heatmapX
                     }
                 }
             }
@@ -317,9 +315,9 @@ public class QuickPoseDetectionModel {
             let relativeY = CGFloat(Float(maxY) / Float(self.inputHeight) * self.outputStride)
 
             if maxVal > self.detectionThreshold {
-                print("normal kp _\(k) at (\(relativeX), \(relativeY))")
+                print("normal kp _\(keypoint) at (\(relativeX), \(relativeY))")
             } else {
-                print("abnormal kp _\(k) at (\(relativeX), \(relativeY)) with conf=\(maxVal)")
+                print("abnormal kp _\(keypoint) at (\(relativeX), \(relativeY)) with conf=\(maxVal)")
             }
             
             return CGPoint(x: relativeX, y: relativeY)
@@ -330,13 +328,12 @@ public class QuickPoseDetectionModel {
     }
 
 
-    
     // MARK: init helpers
     
     private func getOutputShape(desc: MLModelDescription, outputName: String) throws -> [Int] {
         
         guard let output = desc.outputDescriptionsByName[outputName] else {
-            throw NSError(domain: "QuickPoseDetectionModel", code: 1001, userInfo: [NSLocalizedDescriptionKey : "Could not find output description for \(outputName)"])
+            throw NSError(domain: "QuickPoseDetectionModel", code: 1001, userInfo: [NSLocalizedDescriptionKey: "Could not find output description for \(outputName)"])
         }
         
         guard let constraint = output.multiArrayConstraint else {

@@ -25,6 +25,9 @@ public class QuickPoseDetectionModel {
     private var heatmapSize: (Int, Int) = (0, 0)
     private var outputStride: Float = 1.0
     
+    // other features
+    private var detectionThreshold: Float = 0.5
+    
     public init(model: MLModel) throws {
         
         self.model = model
@@ -68,12 +71,8 @@ public class QuickPoseDetectionModel {
         
         // TODO: POSSIBLE ADDITIONS
         // detect image/video encoding
-        
-        // Number of keypoints (currently 17).
-        // Number of channels (currently 56) and semantics (4+1+51).
-        // Confidence thresholds (0.5).
-        // Whether output coordinates are normalized or absolute.
-        // Expected output shape (e.g. [1, 56, 8400])
+
+        // Confidence thresholds (0.5).!!!
         
         // detect specific hardware accelerations
     }
@@ -244,11 +243,11 @@ public class QuickPoseDetectionModel {
         var keypoints: [CGPoint] = []
         
         for kp in 0..<17 {
-            let x = ptr[(5 + kp * 3) * anchors + bestIndex]
-            let y = ptr[(5 + kp * 3 + 1) * anchors + bestIndex]
+            let x = ptr[(5 + kp * 3) * anchors + bestIndex] / Float(self.inputWidth)
+            let y = ptr[(5 + kp * 3 + 1) * anchors + bestIndex] / Float(self.inputHeight)
             let conf = ptr[(5 + kp * 3 + 2) * anchors + bestIndex]
             
-            if conf > 0.5 {
+            if conf > self.detectionThreshold {
                 keypoints.append(CGPoint(x: CGFloat(x), y: CGFloat(y)))
                 print("normal kp _\(kp) with \(x), \(y)")
             } else {
@@ -287,10 +286,10 @@ public class QuickPoseDetectionModel {
                 }
             }
             
-            let relativeX = CGFloat(Float(maxX) * self.outputStride)
-            let relativeY = CGFloat(Float(maxY) * self.outputStride)
+            let relativeX = CGFloat(Float(maxX) / Float(self.inputWidth) * self.outputStride)
+            let relativeY = CGFloat(Float(maxY) / Float(self.inputHeight) * self.outputStride)
 
-            if maxVal > 0.3 {
+            if maxVal > self.detectionThreshold {
                 print("normal kp _\(k) at (\(relativeX), \(relativeY))")
             } else {
                 print("abnormal kp _\(k) at (\(relativeX), \(relativeY)) with conf=\(maxVal)")

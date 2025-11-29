@@ -101,6 +101,221 @@ public final class QuickObjectDetectionModel {
         
         self.classLabels = desc.classLabels
     }
+    
+    // MARK: Public API
+    
+    public func predict(image: CGImage) -> [Detection] {
+        do {
+            let pixelBuffer = try preprocessImage(image)
+            return try predictHelper(pixelBuffer: pixelBuffer)
+        } catch {
+            print("[QuickObjectDetectionModel] predict(image:) error: \(error)")
+            return []
+        }
+    }
+    
+    public func predict(pixelBuffer: CVPixelBuffer) -> [Detection] {
+        do {
+            let resized = try resizePixelBuffer(pixelBuffer)
+            return try predictHelper(pixelBuffer: resized)
+        } catch {
+            print("[QuickObjectDetectionModel] predict(pixelBuffer:) error: \(error)")
+            return []
+        }
+    }
+    
+    // MARK: Core implementation
+    
+    private func predictHelper(pixelBuffer: CVPixelBuffer) throws -> [Detection] {
+        let inputValue = MLFeatureValue(pixelBuffer: pixelBuffer)
+        let input = try MLDictionaryFeatureProvider(dictionary: [inputName: inputValue])
+        
+        let prediction = try model.prediction(from: input)
+        
+        guard let locationArray = prediction.featureValue(for: outputLocationName)?.multiArrayValue,
+              let confArray = prediction.featureValue(for: outputConfName)?.multiArrayValue else {
+            print("[QuickObjectDetectionModel] No MultiArray output for key \(outputLocationName) or \(outputConfName)")
+            return []
+        }
+        
+        // Dispatch based on conf shape (YOLO: 2D [N,classes], DETR: 1D [1,N])
+        return outputConfShape.count == 2 ? parseYOLO(locationArray, confArray) : parseDETR(locationArray, confArray, prediction)
+    }
+
+    // resize helpers
+    private func resizePixelBuffer(_ buffer: CVPixelBuffer) throws -> CVPixelBuffer {
+        var outputBuffer: CVPixelBuffer?
+        let attrs = [
+            kCVPixelBufferCGImageCompatibilityKey: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey: true
+        ] as CFDictionary
+        
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            inputWidth,
+            inputHeight,
+            CVPixelBufferGetPixelFormatType(buffer),
+            attrs,
+            &outputBuffer
+        )
+        
+        guard status == kCVReturnSuccess, let resizedBuffer = outputBuffer else {
+            throw NSError(domain: "PixelBufferResize",
+                          code: 0,
+                          userInfo: [NSLocalizedDescriptionKey: "Failed to create pixel buffer"])
+        }
+        
+        CVPixelBufferLockBaseAddress(buffer, .readOnly)
+        CVPixelBufferLockBaseAddress(resizedBuffer, [])
+        defer {
+            CVPixelBufferUnlockBaseAddress(buffer, .readOnly)
+            CVPixelBufferUnlockBaseAddress(resizedBuffer, [])
+        }
+        
+        let ciImage = CIImage(cvPixelBuffer: buffer)
+        let ciContext = CIContext()
+        
+        let sx = CGFloat(inputWidth) / CGFloat(CVPixelBufferGetWidth(buffer))
+        let sy = CGFloat(inputHeight) / CGFloat(CVPixelBufferGetHeight(buffer))
+        let scaleTransform = CGAffineTransform(scaleX: sx, y: sy)
+        let resizedCIImage = ciImage.transformed(by: scaleTransform)
+        
+        ciContext.render(resizedCIImage, to: resizedBuffer)
+        
+        return resizedBuffer
+    }
+    
+    private func preprocessImage(_ cgImage: CGImage) throws -> CVPixelBuffer {
+        let attrs = [
+            kCVPixelBufferCGImageCompatibilityKey: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey: true
+        ] as CFDictionary
+        
+        var pixelBuffer: CVPixelBuffer?
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            inputWidth,
+            inputHeight,
+            kCVPixelFormatType_32ARGB,
+            attrs,
+            &pixelBuffer
+        )
+        
+        guard status == kCVReturnSuccess, let buffer = pixelBuffer else {
+            throw NSError(domain: "ImageProcessing",
+                          code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "Failed to create pixel buffer"])
+        }
+        
+        CVPixelBufferLockBaseAddress(buffer, [])
+        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+        
+        guard let context = CGContext(
+            data: CVPixelBufferGetBaseAddress(buffer),
+            width: inputWidth,
+            height: inputHeight,
+            bitsPerComponent: 8,
+            bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue
+        ) else {
+            throw NSError(domain: "ImageProcessing",
+                          code: 2,
+                          userInfo: [NSLocalizedDescriptionKey: "Failed to create CGContext"])
+        }
+        
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: inputWidth, height: inputHeight))
+        
+        return buffer
+    }
+    
+    // parse helpers
+    private func parseYOLO(_ boxes: MLMultiArray, _ scores: MLMultiArray) -> [Detection] {
+        guard boxes.shape.count == 2, scores.shape.count == 2,
+              Int(boxes.shape[0].doubleValue) == Int(scores.shape[0].doubleValue) else {
+            print("YOLO shape mismatch: boxes \(boxes.shape), scores \(scores.shape)")
+            return []
+        }
+        
+        let numBoxes = Int(boxes.shape[0].doubleValue)
+        let numClasses = Int(scores.shape[1].doubleValue)
+        var detections: [Detection] = []
+        
+        for i in 0..<numBoxes {
+            var maxScore: Float = 0
+            var bestClass = 0
+            
+            for c in 0..<numClasses {
+                let score = (try? scores[[NSNumber(value: i), NSNumber(value: c)]].floatValue) ?? 0
+                if score > maxScore {
+                    maxScore = score
+                    bestClass = c
+                }
+            }
+            
+            guard maxScore > Float(confidenceThreshold) else { continue }
+            
+            let cx = (try? boxes[[NSNumber(value: i), NSNumber(value: 0)]].doubleValue) ?? 0
+            let cy = (try? boxes[[NSNumber(value: i), NSNumber(value: 1)]].doubleValue) ?? 0
+            let w = (try? boxes[[NSNumber(value: i), NSNumber(value: 2)]].doubleValue) ?? 0
+            let h = (try? boxes[[NSNumber(value: i), NSNumber(value: 3)]].doubleValue) ?? 0
+            
+            let x1 = cx - w / 2
+            let y1 = cy - h / 2
+            
+            detections.append(Detection(
+                bbox: CGRect(x: x1, y: y1, width: w, height: h),
+                confidence: maxScore,
+                classIndex: bestClass,
+                className: classLabels?[bestClass] as? String
+            ))
+        }
+        return detections
+    }
+
+    private func parseDETR(_ boxes: MLMultiArray, _ scores: MLMultiArray, _ prediction: MLFeatureProvider) -> [Detection] {
+        guard boxes.shape.count == 3, scores.shape.count == 2,
+              Int(boxes.shape[1].doubleValue) == 300 else {
+            print("DETR shape mismatch: boxes \(boxes.shape), scores \(scores.shape)")
+            return []
+        }
+        
+        var detections: [Detection] = []
+        let numDets = 300
+        
+        let labelArray: MLMultiArray?
+        if let labelName = outputLabelName,
+           let labels = prediction.featureValue(for: labelName)?.multiArrayValue {
+            labelArray = labels
+        } else {
+            labelArray = nil
+        }
+        
+        for i in 0..<numDets {
+            let score = (try? scores[[NSNumber(value: 0), NSNumber(value: i)]].floatValue) ?? 0
+            guard score > Float(confidenceThreshold) else { continue }
+            
+            let x1 = (try? boxes[[NSNumber(value: 0), NSNumber(value: i), NSNumber(value: 0)]].doubleValue) ?? 0
+            let y1 = (try? boxes[[NSNumber(value: 0), NSNumber(value: i), NSNumber(value: 1)]].doubleValue) ?? 0
+            let x2 = (try? boxes[[NSNumber(value: 0), NSNumber(value: i), NSNumber(value: 2)]].doubleValue) ?? 1
+            let y2 = (try? boxes[[NSNumber(value: 0), NSNumber(value: i), NSNumber(value: 3)]].doubleValue) ?? 1
+            
+            let classIdx: Int
+            if let labelArray = labelArray, labelArray.shape.count == 2 {
+                classIdx = Int((try? labelArray[[NSNumber(value: 0), NSNumber(value: i)]].doubleValue) ?? 0)
+            } else {
+                classIdx = 0
+            }
+            
+            detections.append(Detection(
+                bbox: CGRect(x: x1, y: y1, width: x2 - x1, height: y2 - y1),
+                confidence: score,
+                classIndex: classIdx,
+                className: classLabels?[classIdx] as? String
+            ))
+        }
+        return detections
+    }
 
 }
 

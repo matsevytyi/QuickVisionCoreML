@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		9C8F5B462ED91E5200A86F8D /* CVisionQuick.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = CVisionQuick.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		9C8F5B462ED91E5200A86F8D /* QuickVisionCoreML.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = QuickVisionCoreML.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -40,7 +40,7 @@
 		9C8F5B472ED91E5200A86F8D /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				9C8F5B462ED91E5200A86F8D /* CVisionQuick.framework */,
+				9C8F5B462ED91E5200A86F8D /* QuickVisionCoreML.framework */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -58,9 +58,9 @@
 /* End PBXHeadersBuildPhase section */
 
 /* Begin PBXNativeTarget section */
-		9C8F5B452ED91E5200A86F8D /* CVisionQuick */ = {
+		9C8F5B452ED91E5200A86F8D /* QuickVisionCoreML */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 9C8F5B4F2ED91E5200A86F8D /* Build configuration list for PBXNativeTarget "CVisionQuick" */;
+			buildConfigurationList = 9C8F5B4F2ED91E5200A86F8D /* Build configuration list for PBXNativeTarget "QuickVisionCoreML" */;
 			buildPhases = (
 				9C8F5B412ED91E5200A86F8D /* Headers */,
 				9C8F5B422ED91E5200A86F8D /* Sources */,
@@ -74,11 +74,11 @@
 			fileSystemSynchronizedGroups = (
 				9C8F5B482ED91E5200A86F8D /* CVisionQuick */,
 			);
-			name = CVisionQuick;
+			name = QuickVisionCoreML;
 			packageProductDependencies = (
 			);
 			productName = CVisionQuick;
-			productReference = 9C8F5B462ED91E5200A86F8D /* CVisionQuick.framework */;
+			productReference = 9C8F5B462ED91E5200A86F8D /* QuickVisionCoreML.framework */;
 			productType = "com.apple.product-type.framework";
 		};
 /* End PBXNativeTarget section */
@@ -110,7 +110,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				9C8F5B452ED91E5200A86F8D /* CVisionQuick */,
+				9C8F5B452ED91E5200A86F8D /* QuickVisionCoreML */,
 			);
 		};
 /* End PBXProject section */
@@ -360,7 +360,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		9C8F5B4F2ED91E5200A86F8D /* Build configuration list for PBXNativeTarget "CVisionQuick" */ = {
+		9C8F5B4F2ED91E5200A86F8D /* Build configuration list for PBXNativeTarget "QuickVisionCoreML" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				9C8F5B502ED91E5200A86F8D /* Debug */,

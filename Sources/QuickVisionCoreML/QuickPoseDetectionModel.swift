@@ -11,6 +11,8 @@ import CoreImage
 
 public class QuickPoseDetectionModel {
     
+    // MARK: Properties
+    
     private let model: MLModel
     
     // input features
@@ -28,6 +30,9 @@ public class QuickPoseDetectionModel {
     // other features
     private var detectionThreshold: Float = 0.5
     
+    // MARK: Initialization (2 options)
+    
+    /// Initialize with automatic format detection
     public init(model: MLModel) throws {
         
         self.model = model
@@ -46,7 +51,7 @@ public class QuickPoseDetectionModel {
             self.inputName = desc.inputDescriptionsByName.keys.first ?? "image"
             self.inputWidth = 640
             self.inputHeight = 640
-            print("Failed to extract output feature metadata, make sure the model is .mlmodel. If problem persists, specify settings manually.")
+            print("[MODEL INIT] Failed to extract output feature metadata, make sure the model is .mlmodel, trying to proceed with default settings. If problem persists, specify settings manually.")
             
         }
         
@@ -56,7 +61,7 @@ public class QuickPoseDetectionModel {
         else {
             throw NSError(domain: "QuickPoseDetectionModel",
                           code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: "No MultiArray output"])
+                          userInfo: [NSLocalizedDescriptionKey: "[MODEL INIT] No MultiArray output"])
         }
         
         self.outputName = outputName
@@ -75,6 +80,7 @@ public class QuickPoseDetectionModel {
         // detect specific hardware accelerations
     }
     
+    /// Manual configuration override with automatic model detection on fallback
     public convenience init(
         model: MLModel,
         config: [String: Any]
@@ -103,6 +109,10 @@ public class QuickPoseDetectionModel {
         }
     }
 
+    // MARK: Public API (2 options)
+    
+    /// Detect keypoints from CGImage (i.e. for photo from gallery)
+    /// - Returns: Array of keypoints in normalized [0,1] coordinates
     public func predict(image: CGImage) -> [CGPoint] {
         
         do {
@@ -118,6 +128,8 @@ public class QuickPoseDetectionModel {
         
     }
     
+    /// Detect keypoints from CVPixelBuffer (i.e. for videostream from Camera)
+    /// - Returns: Array of keypoints in normalized [0,1] coordinates
     public func predict(pixelBuffer: CVPixelBuffer) -> [CGPoint] {
         do {
             
@@ -134,6 +146,9 @@ public class QuickPoseDetectionModel {
         }
     }
     
+    // MARK: - Private Implementation
+    
+    // MARK: Predict helpers
     private func predictHelper(pixelBuffer: CVPixelBuffer) throws -> [CGPoint] {
         
         // Wrap CVPixelBuffer into MLFeatureProvider using the expected input name.
@@ -328,7 +343,7 @@ public class QuickPoseDetectionModel {
     }
 
 
-    // MARK: init helpers
+    // MARK: Init helpers
     
     private func getOutputShape(desc: MLModelDescription, outputName: String) throws -> [Int] {
         

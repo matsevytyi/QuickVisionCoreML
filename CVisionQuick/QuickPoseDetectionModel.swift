@@ -13,12 +13,17 @@ public class QuickPoseDetectionModel {
     
     private let model: MLModel
     
+    // input features
     private let inputName: String
     private let inputWidth: Int
     private let inputHeight: Int
     
-    private let outputName: String
-    
+    // output features
+    private var outputName: String
+    private var isHeatmapModel: Bool = false
+    private var numKeypoints: Int = 17
+    private var heatmapSize: (Int, Int) = (0, 0)
+    private var outputStride: Float = 1.0
     
     public init(model: MLModel) throws {
         
@@ -27,35 +32,39 @@ public class QuickPoseDetectionModel {
         let desc = self.model.modelDescription
         
         // Determine input feature name and size
-        if let (name, feature) = desc.inputDescriptionsByName.first,
-               feature.type == .image,
-               let constraint = feature.imageConstraint {
-                self.inputName = name
-                self.inputWidth = constraint.pixelsWide
-                self.inputHeight = constraint.pixelsHigh
-            } else {
-                // Fallbacks (default appoach - більшість користується 640/640)
-                self.inputName = desc.inputDescriptionsByName.keys.first ?? "image"
-                self.inputWidth = 640
-                self.inputHeight = 640
-                throw NSError(
-                    domain: "QuickPoseDetectionModel",
-                    code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: "Failed to extract output feature metadata, make sure the model is .mlmodel. If problem persists, specify settings manually."]
-                )
-            }
+        if let (inputName, inputFeature) = desc.inputDescriptionsByName.first,
+           inputFeature.type == .image,
+           let constraint = inputFeature.imageConstraint {
+            self.inputName = inputName
+            self.inputWidth = constraint.pixelsWide
+            self.inputHeight = constraint.pixelsHigh
+        } else {
+            // Fallbacks (default appoach - більшість користується 640/640)
+            self.inputName = desc.inputDescriptionsByName.keys.first ?? "image"
+            self.inputWidth = 640
+            self.inputHeight = 640
+            print("Failed to extract output feature metadata, make sure the model is .mlmodel. If problem persists, specify settings manually.")
+            
+        }
         
-        // Output feature type
-        if let (name, _) = desc.outputDescriptionsByName.first {
-                self.outputName = name
-            } else {
-                throw NSError(
-                    domain: "QuickPoseDetectionModel",
-                    code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: "Failed to extract output feature metadata, make sure the model is .mlmodel. If problem persists, specify settings manually."]
-                )
-
-            }
+        // Output feature type and sizes
+        guard let (outputName, outputFeature) = desc.outputDescriptionsByName.first,
+              outputFeature.type == .multiArray
+        else {
+            throw NSError(domain: "QuickPoseDetectionModel",
+                          code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "No MultiArray output"])
+        }
+        
+        self.outputName = outputName
+        
+        // shape extraction attempt
+        let shape = try getOutputShape(desc: desc, outputName: outputName)
+        self.isHeatmapModel = isHeatmapShape(shape)  // [K, H, W]
+        self.numKeypoints = extractKeypoints(shape)
+        self.heatmapSize = isHeatmapModel ? (shape[1], shape[2]) : (0, 0)
+        self.outputStride = calculateStride(inputSize: (inputWidth, inputHeight),
+                                            outputSize: isHeatmapModel ? (shape[1], shape[2]) : nil)
         
         // TODO: POSSIBLE ADDITIONS
         // detect image/video encoding
@@ -115,7 +124,13 @@ public class QuickPoseDetectionModel {
         print("Raw output", prediction)
 
         // Extract keypoints
-        return parseCocoOutput(prediction)
+        if self.isHeatmapModel {
+            // Heatmap style
+            return parseHeatmapOutput(prediction)
+        } else {
+            // Default (YOLO/Coco) style
+            return parseCocoOutput(prediction)
+        }
     }
     
     private func resizePixelBuffer(_ buffer: CVPixelBuffer) throws -> CVPixelBuffer {
@@ -198,12 +213,12 @@ public class QuickPoseDetectionModel {
     }
     
     private func parseCocoOutput(_ prediction: MLFeatureProvider) -> [CGPoint] {
-        guard let multiArray = prediction.featureValue(for: self.outputName)?.multiArrayValue else {
+        guard let outputArray = prediction.featureValue(for: self.outputName)?.multiArrayValue else {
             print("No multiArray output")
             return []
         }
         
-        let ptr = UnsafeMutablePointer<Float32>(OpaquePointer(multiArray.dataPointer))
+        let ptr = UnsafeMutablePointer<Float32>(OpaquePointer(outputArray.dataPointer))
         
         let channels = 56  // 4 bbox + 1 obj + 51 keypoints
         let anchors = 8400
@@ -244,4 +259,93 @@ public class QuickPoseDetectionModel {
         
         return keypoints
     }
+
+    private func parseHeatmapOutput(_ prediction: MLFeatureProvider) -> [CGPoint] {
+        
+        guard let outputArray = prediction.featureValue(for: self.outputName)?.multiArrayValue else {
+            print("No multiArray output")
+            return []
+        }
+        
+        let shape = outputArray.shape.map { Int(truncating: $0) } // [K, H, W]
+        
+        let keypoints: [CGPoint] = (0..<numKeypoints).map { k in
+            var maxVal: Double = -Double.infinity
+            var maxY = 0, maxX = 0
+            
+            // Find argmax in heatmap slice [H,W] for keypoint k
+            for y in 0..<shape[1] {
+                for x in 0..<shape[2] {
+                    let val = outputArray[[NSNumber(value: k),
+                                     NSNumber(value: y),
+                                     NSNumber(value: x)]].doubleValue
+                    if val > maxVal {
+                        maxVal = val
+                        maxY = y
+                        maxX = x
+                    }
+                }
+            }
+            
+            let relativeX = CGFloat(Float(maxX) * self.outputStride)
+            let relativeY = CGFloat(Float(maxY) * self.outputStride)
+
+            if maxVal > 0.3 {
+                print("normal kp _\(k) at (\(relativeX), \(relativeY))")
+            } else {
+                print("abnormal kp _\(k) at (\(relativeX), \(relativeY)) with conf=\(maxVal)")
+            }
+            
+            return CGPoint(x: relativeX, y: relativeY)
+            
+        }
+        
+        return keypoints
+    }
+
+
+    
+    // MARK: init helpers
+    
+    private func getOutputShape(desc: MLModelDescription, outputName: String) throws -> [Int] {
+        
+        guard let output = desc.outputDescriptionsByName[outputName] else {
+            throw NSError(domain: "QuickPoseDetectionModel", code: 1001, userInfo: [NSLocalizedDescriptionKey : "Could not find output description for \(outputName)"])
+        }
+        
+        guard let constraint = output.multiArrayConstraint else {
+            return []
+        }
+        
+        return constraint.shape.map {
+            Int(truncating: $0)
+        }
+        
+    }
+
+    private func isHeatmapShape(_ shape: [Int]) -> Bool {
+        // Heatmap: [K, H, W] may contain K=14/17 (keypoints first)
+        return shape.count == 3 && (14...17).contains(shape[0])
+    }
+
+    private func extractKeypoints(_ shape: [Int]) -> Int {
+        
+        // attempt heatmap
+        if shape.count == 3 && (14...17).contains(shape[0]) {
+            return shape[0]
+        }
+        
+        return 17 // YOLO default
+    }
+
+    // downsampling factor between last hidden layer (usually Convolutional) and output layer
+    private func calculateStride(inputSize: (Int, Int), outputSize: (Int, Int)?) -> Float {
+        
+        guard let out = outputSize else { return 1.0 }
+        
+        let res = Float(inputSize.0 / out.0)
+        
+        return res
+    }
+    
 }

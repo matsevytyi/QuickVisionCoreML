@@ -280,10 +280,10 @@ public class QuickPoseDetectionModel {
             
             if conf > self.detectionThreshold {
                 keypoints.append(CGPoint(x: CGFloat(projectedFrameX), y: CGFloat(projectedFrameY)))
-                //print("normal kp _\(keypoint) with \(projectedFrameX), \(projectedFrameY)")
+                // print("normal kp _\(keypoint) with \(projectedFrameX), \(projectedFrameY)")
             } else {
                 keypoints.append(CGPoint(x: 0, y: 0))
-                //("abnormal kp _\(keypoint) with \(projectedFrameX), \(projectedFrameY) and conf=\(conf)")
+                // ("abnormal kp _\(keypoint) with \(projectedFrameX), \(projectedFrameY) and conf=\(conf)")
             }
         }
         
@@ -321,9 +321,9 @@ public class QuickPoseDetectionModel {
             let relativeY = CGFloat(Float(maxY) / Float(self.inputHeight) * self.outputStride)
 
             if maxVal > self.detectionThreshold {
-                //print("normal kp _\(keypoint) at (\(relativeX), \(relativeY))")
+                // print("normal kp _\(keypoint) at (\(relativeX), \(relativeY))")
             } else {
-                //print("abnormal kp _\(keypoint) at (\(relativeX), \(relativeY)) with conf=\(maxVal)")
+                // print("abnormal kp _\(keypoint) at (\(relativeX), \(relativeY)) with conf=\(maxVal)")
             }
             
             return CGPoint(x: relativeX, y: relativeY)

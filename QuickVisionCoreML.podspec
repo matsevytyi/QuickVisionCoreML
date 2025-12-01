@@ -16,7 +16,7 @@ Pod::Spec.new do |spec|
   #
 
   spec.name         = "QuickVisionCoreML"
-  spec.version      = "0.1.0"
+  spec.version      = "0.2.0"
   spec.summary      = "Quicker and easier CoreML Computer Vision models deployment for Swift/iOS."
 
   # This description is used to generate tags and improve search results.

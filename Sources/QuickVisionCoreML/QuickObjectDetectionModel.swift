@@ -94,7 +94,7 @@ public final class QuickObjectDetectionModel {
         
         print("Extracted output conf: \(self.outputConfName), \(self.outputConfShape))")
         print("Extracted output loc: \(self.outputLocationName), \(self.outputLocationShape)")
-        print("Extracted output labels: \(self.outputLabelName), \(self.outputLabelShape)")
+        print("Extracted output labels: \(String(describing: self.outputLabelName)), \(self.outputLabelShape)")
         
         self.classLabels = desc.classLabels
     }
@@ -264,7 +264,7 @@ public final class QuickObjectDetectionModel {
             var bestClass = 0
             
             for c in 0..<numClasses {
-                let score = (try? scores[[NSNumber(value: i), NSNumber(value: c)]].floatValue) ?? 0
+                let score = (scores[[NSNumber(value: i), NSNumber(value: c)]].floatValue) ?? 0
                 if score > maxScore {
                     maxScore = score
                     bestClass = c
@@ -273,10 +273,10 @@ public final class QuickObjectDetectionModel {
             
             guard maxScore > Float(confidenceThreshold) else { continue }
             
-            let cx = (try? boxes[[NSNumber(value: i), NSNumber(value: 0)]].doubleValue) ?? 0
-            let cy = (try? boxes[[NSNumber(value: i), NSNumber(value: 1)]].doubleValue) ?? 0
-            let w = (try? boxes[[NSNumber(value: i), NSNumber(value: 2)]].doubleValue) ?? 0
-            let h = (try? boxes[[NSNumber(value: i), NSNumber(value: 3)]].doubleValue) ?? 0
+            let cx = (boxes[[NSNumber(value: i), NSNumber(value: 0)]].doubleValue) ?? 0
+            let cy = (boxes[[NSNumber(value: i), NSNumber(value: 1)]].doubleValue) ?? 0
+            let w = (boxes[[NSNumber(value: i), NSNumber(value: 2)]].doubleValue) ?? 0
+            let h = (boxes[[NSNumber(value: i), NSNumber(value: 3)]].doubleValue) ?? 0
             
             let x1 = cx - w / 2
             let y1 = cy - h / 2
@@ -310,17 +310,17 @@ public final class QuickObjectDetectionModel {
         }
         
         for i in 0..<numDets {
-            let score = (try? scores[[NSNumber(value: 0), NSNumber(value: i)]].floatValue) ?? 0
+            let score = (scores[[NSNumber(value: 0), NSNumber(value: i)]].floatValue) ?? 0
             guard score > Float(confidenceThreshold) else { continue }
             
-            let x1 = (try? boxes[[NSNumber(value: 0), NSNumber(value: i), NSNumber(value: 0)]].doubleValue) ?? 0
-            let y1 = (try? boxes[[NSNumber(value: 0), NSNumber(value: i), NSNumber(value: 1)]].doubleValue) ?? 0
-            let x2 = (try? boxes[[NSNumber(value: 0), NSNumber(value: i), NSNumber(value: 2)]].doubleValue) ?? 1
-            let y2 = (try? boxes[[NSNumber(value: 0), NSNumber(value: i), NSNumber(value: 3)]].doubleValue) ?? 1
+            let x1 = (boxes[[NSNumber(value: 0), NSNumber(value: i), NSNumber(value: 0)]].doubleValue) ?? 0
+            let y1 = (boxes[[NSNumber(value: 0), NSNumber(value: i), NSNumber(value: 1)]].doubleValue) ?? 0
+            let x2 = (boxes[[NSNumber(value: 0), NSNumber(value: i), NSNumber(value: 2)]].doubleValue) ?? 1
+            let y2 = (boxes[[NSNumber(value: 0), NSNumber(value: i), NSNumber(value: 3)]].doubleValue) ?? 1
             
             let classIdx: Int
             if let labelArray = labelArray, labelArray.shape.count == 2 {
-                classIdx = Int((try? labelArray[[NSNumber(value: 0), NSNumber(value: i)]].doubleValue) ?? 0)
+                classIdx = Int((labelArray[[NSNumber(value: 0), NSNumber(value: i)]].doubleValue) ?? 0)
             } else {
                 classIdx = 0
             }

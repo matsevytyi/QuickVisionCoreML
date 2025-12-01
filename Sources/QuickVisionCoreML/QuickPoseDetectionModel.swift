@@ -51,7 +51,7 @@ public class QuickPoseDetectionModel {
             self.inputName = desc.inputDescriptionsByName.keys.first ?? "image"
             self.inputWidth = 640
             self.inputHeight = 640
-            print("[MODEL INIT] Failed to extract output feature metadata, make sure the model is .mlmodel, trying to proceed with default settings. If problem persists, specify settings manually.")
+            print("[MODEL INIT] <QuickPoseDetectionModel> Failed to extract output feature metadata, make sure the model is .mlmodel, trying to proceed with default settings. If problem persists, specify settings manually.")
             
         }
         
@@ -122,7 +122,7 @@ public class QuickPoseDetectionModel {
             return try predictHelper(pixelBuffer: pixelBuffer)
             
         } catch {
-            print("Error extracting keypoints: \(error)")
+            print("[MODEL PREDICT] <QuickPoseDetectionModel> Error extracting keypoints: \(error)")
             return []
         }
         
@@ -132,16 +132,11 @@ public class QuickPoseDetectionModel {
     /// - Returns: Array of keypoints in normalized [0,1] coordinates
     public func predict(pixelBuffer: CVPixelBuffer) -> [CGPoint] {
         do {
-            
-            print("Buffer received", pixelBuffer)
             let resizedBuffer = try resizePixelBuffer(pixelBuffer)
-            
-            print("Buffer resized")
-            
+
             return try predictHelper(pixelBuffer: resizedBuffer)
-            
         } catch {
-            print("Error extracting keypoints: \(error)")
+            print("[MODEL PREDICT] <QuickPoseDetectionModel> Error extracting keypoints: \(error)")
             return []
         }
     }
@@ -155,13 +150,9 @@ public class QuickPoseDetectionModel {
         
         let inputValue = MLFeatureValue(pixelBuffer: pixelBuffer)
         let input = try MLDictionaryFeatureProvider(dictionary: [self.inputName: inputValue])
-        
-        print("Raw input", input)
 
         // Core ML prediction
         let prediction = try model.prediction(from: input)
-        
-        print("Raw output", prediction)
 
         // Extract keypoints
         if self.isHeatmapModel {
@@ -253,7 +244,7 @@ public class QuickPoseDetectionModel {
     
     private func parseCocoOutput(_ prediction: MLFeatureProvider) -> [CGPoint] {
         guard let outputArray = prediction.featureValue(for: self.outputName)?.multiArrayValue else {
-            print("No multiArray output")
+            print("[Parse COCO] <QuickPoseDetectionModel> No multiArray output")
             return []
         }
         
@@ -275,7 +266,7 @@ public class QuickPoseDetectionModel {
         }
         
         guard bestIndex != -1, bestObjectness > 0.5 else {
-            print("No object detected")
+            print("[Parse COCO] <QuickPoseDetectionModel> No object detected")
             return []
         }
         
@@ -289,10 +280,10 @@ public class QuickPoseDetectionModel {
             
             if conf > self.detectionThreshold {
                 keypoints.append(CGPoint(x: CGFloat(projectedFrameX), y: CGFloat(projectedFrameY)))
-                print("normal kp _\(keypoint) with \(projectedFrameX), \(projectedFrameY)")
+                //print("normal kp _\(keypoint) with \(projectedFrameX), \(projectedFrameY)")
             } else {
                 keypoints.append(CGPoint(x: 0, y: 0))
-                print("abnormal kp _\(keypoint) with \(projectedFrameX), \(projectedFrameY) and conf=\(conf)")
+                //("abnormal kp _\(keypoint) with \(projectedFrameX), \(projectedFrameY) and conf=\(conf)")
             }
         }
         
@@ -302,7 +293,7 @@ public class QuickPoseDetectionModel {
     private func parseHeatmapOutput(_ prediction: MLFeatureProvider) -> [CGPoint] {
         
         guard let outputArray = prediction.featureValue(for: self.outputName)?.multiArrayValue else {
-            print("No multiArray output")
+            print("[Parse Heatmap] <QuickPoseDetectionModel> No multiArray output")
             return []
         }
         
@@ -330,9 +321,9 @@ public class QuickPoseDetectionModel {
             let relativeY = CGFloat(Float(maxY) / Float(self.inputHeight) * self.outputStride)
 
             if maxVal > self.detectionThreshold {
-                print("normal kp _\(keypoint) at (\(relativeX), \(relativeY))")
+                //print("normal kp _\(keypoint) at (\(relativeX), \(relativeY))")
             } else {
-                print("abnormal kp _\(keypoint) at (\(relativeX), \(relativeY)) with conf=\(maxVal)")
+                //print("abnormal kp _\(keypoint) at (\(relativeX), \(relativeY)) with conf=\(maxVal)")
             }
             
             return CGPoint(x: relativeX, y: relativeY)

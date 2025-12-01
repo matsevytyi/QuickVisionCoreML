@@ -38,14 +38,7 @@ public final class QuickObjectDetectionModel {
     private var confidenceThreshold: Double = 0.25 
     
     // Output
-    private var outputConfName: String = "coordinates"
-    private var outputLocationName: String = "output"
-    private var outputLabelName: String? // not for YOLO - only if class
     
-    private var outputConfShape: [Int]
-    private var outputLocationShape: [Int]
-    private var outputLabelShape: [Int]
-
     // for YOLO
 // named 'confidence', MultiArray (Float32 0 × 80), [0...x80] Boxes x Class confidence (see user-defined metadata "classes")
 // named 'coordinates', MultiArray (Float32 0 × 4), [0...x4] Boxes × [x, y, width, height] (relative to image size)
@@ -55,7 +48,15 @@ public final class QuickObjectDetectionModel {
 // named 'scores', MultiArray (Float16 1 × 300)
 // named 'label', MultiArray (Float16 1 × 300)
     
-    private let classLabels: [Any]?
+    private var outputConfName: String = "coordinates"
+    private var outputLocationName: String = "output"
+    private var outputLabelName: String? // not for YOLO - only if class
+    
+    private var outputConfShape: [Int]
+    private var outputLocationShape: [Int]
+    private var outputLabelShape: [Int]
+    
+    private var classLabels: [Any]?
     
     // MARK: Init
     
@@ -80,10 +81,6 @@ public final class QuickObjectDetectionModel {
         self.outputConfName = outputs.keys.first { $0.contains("scor") || $0.contains("conf") } ?? "confidence"
         self.outputLabelName = outputs.keys.first { $0.contains("label") || $0.contains("clas") } ?? nil //not everywhere by default
         
-        
-        print(outputs[self.outputConfName])
-        print(outputs[self.outputConfName]?.multiArrayConstraint)
-        print(outputs[self.outputConfName]?.multiArrayConstraint?.shape)
         self.outputConfShape = outputs[self.outputConfName]?.multiArrayConstraint?.shape as? [Int] ?? []
         self.outputLocationShape = outputs[self.outputLocationName]?.multiArrayConstraint?.shape as? [Int] ?? []
         
@@ -102,7 +99,28 @@ public final class QuickObjectDetectionModel {
         self.classLabels = desc.classLabels
     }
     
-    // MARK: Public API
+    /// Manual configuration override with automatic model detection on fallback
+    public convenience init(model: MLModel, config: [String: Any]) throws {
+        try self.init(model: model)
+        if let inputName = config["inputName"] as? String { self.inputName = inputName }
+        if let inputWidth = config["inputWidth"] as? Int { self.inputWidth = inputWidth }
+        if let inputHeight = config["inputHeight"] as? Int { self.inputHeight = inputHeight }
+        
+        if let outputConfName = config["outputConfName"] as? String { self.outputConfName = outputConfName }
+        if let outputLocationName = config["outputLocationName"] as? String { self.outputLocationName = outputLocationName }
+        if let outputLabelName = config["outputLabelName"] as? String? { self.outputLabelName = outputLabelName }
+        
+        if let IoUThreshold = config["IoUThreshold"] as? Double { self.IoUThreshold = IoUThreshold }
+        if let confidenceThreshold = config["confidenceThreshold"] as? Double { self.confidenceThreshold = confidenceThreshold }
+
+        if let outputConfShape = config["outputConfShape"] as? [Int] { self.outputConfShape = outputConfShape }
+        if let outputLocationShape = config["outputLocationShape"] as? [Int] { self.outputLocationShape = outputLocationShape }
+        if let outputLabelShape = config["outputLabelShape"] as? [Int] { self.outputLabelShape = outputLabelShape }
+
+        if let classLabels = config["classLabels"] as? [String] { self.classLabels = classLabels }
+    }
+    
+    // MARK: Public API (2 functions)
     
     public func predict(image: CGImage) -> [Detection] {
         do {
@@ -233,7 +251,7 @@ public final class QuickObjectDetectionModel {
     private func parseYOLO(_ boxes: MLMultiArray, _ scores: MLMultiArray) -> [Detection] {
         guard boxes.shape.count == 2, scores.shape.count == 2,
               Int(boxes.shape[0].doubleValue) == Int(scores.shape[0].doubleValue) else {
-            print("YOLO shape mismatch: boxes \(boxes.shape), scores \(scores.shape)")
+            print("[Parse YOLO] <QuickObjectDetectionModel> YOLO shape mismatch: boxes \(boxes.shape), scores \(scores.shape)")
             return []
         }
         
@@ -276,7 +294,7 @@ public final class QuickObjectDetectionModel {
     private func parseDETR(_ boxes: MLMultiArray, _ scores: MLMultiArray, _ prediction: MLFeatureProvider) -> [Detection] {
         guard boxes.shape.count == 3, scores.shape.count == 2,
               Int(boxes.shape[1].doubleValue) == 300 else {
-            print("DETR shape mismatch: boxes \(boxes.shape), scores \(scores.shape)")
+            print("[Parse DETR] <QuickObjectDetectionModel> DETR shape mismatch: boxes \(boxes.shape), scores \(scores.shape)")
             return []
         }
         
